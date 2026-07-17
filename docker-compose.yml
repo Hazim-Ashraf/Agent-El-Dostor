@@ -23,6 +23,8 @@ services:
         condition: service_healthy
     env_file: .env
     environment:
+      # Make the `app` package importable when Streamlit runs a script by path.
+      PYTHONPATH: /app
       # Force the in-cluster DB host regardless of what .env says.
       DATABASE_URL: postgresql://eldostor:eldostor@db:5432/eldostor
       HF_HOME: /models
