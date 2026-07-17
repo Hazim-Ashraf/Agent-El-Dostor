@@ -16,7 +16,7 @@ open-source.
 
 ---
 
-## What's here today (Milestones M0–M3)
+## What's here today (Milestones M0–M4)
 
 - A goal-driven, tool-calling **agent loop** over OpenRouter, working over both the
   **uploaded contract** and the **legislation** KB (`search_contract`,
@@ -33,6 +33,10 @@ open-source.
   citations, and watch a **token + USD usage** panel.
 - A legislation ingestion CLI + a small **bilingual (AR + EN) sample law**, and a
   **sample employment contract** for testing.
+- **M4 hardening**: an **eval harness** (groundedness / citation-recall / refusal
+  metrics), **run tracing** (JSONL with tokens / cost / latency), a query-embedding
+  **cache**, an optional **FastAPI** service, and an expanded multi-domain **SAMPLE**
+  corpus (labor, civil/rental, companies, commercial) with a sourcing guide.
 
 > ℹ️ The seed legislation and sample contract in `data/` are clearly labelled
 > **SAMPLE** placeholder text — not authoritative law. Sourcing the real corpus is a
@@ -60,9 +64,9 @@ cp .env.example .env       # then set OPENROUTER_API_KEY=... in .env
 # 2. Build & start the database + app
 docker compose up --build
 
-# 3. Load the sample legislation (creates the KB tables)
+# 3. Load ALL the sample legislation seeds (creates the KB tables)
 docker compose run --rm app python -m app.ingestion.legislation \
-  --seed data/legislation/seed_labor_law.json
+  --dir data/legislation
 
 # 4. Open the GUI
 #    http://localhost:8501
@@ -108,6 +112,41 @@ the panel shows tokens only and flags that cost was unavailable.
 
 ---
 
+## Evaluation (M4)
+
+A golden set of question/expected-citation cases measures the agent's quality:
+
+```bash
+docker compose run --rm app python eval/run_eval.py
+```
+
+It ingests the seeds + sample contract, runs each case through the agent, and reports:
+**verification pass rate** (are answers grounded?), **citation recall** (did it cite the
+expected articles/clauses?), and **refusal accuracy** (does it refuse out-of-scope
+questions instead of inventing law?). A full report is written to `logs/eval_report.json`.
+Edit `eval/dataset/cases.json` to add cases. (Runs against OpenRouter, so it costs tokens.)
+
+## REST API (M4, optional)
+
+A FastAPI service exposes the same agent:
+
+```bash
+docker compose --profile api up          # http://localhost:8000/docs
+# POST /contracts (multipart file + contract_type)  ·  POST /ask {question, contract_id?}
+#   GET /contracts  ·  GET /health
+```
+
+## Observability (M4)
+
+Every run appends one JSON line to `logs/agent_runs.jsonl` (run id, tools called,
+verification status, tokens, USD cost, latency) and logs a one-line summary. Tail it:
+
+```bash
+docker compose exec app tail -f logs/agent_runs.jsonl
+```
+
+---
+
 ## Common tasks
 
 ```bash
@@ -142,16 +181,19 @@ docker compose down -v && docker compose up
 
 ```
 app/
-  llm/client.py              # OpenRouter via the openai SDK (+ usage.include)
-  core/{config,logging,usage}.py
-  agent/{loop,tools,prompts,context}.py   # the tool-calling agent
-  retrieval/{store,embeddings}.py         # pgvector + local embeddings
-  ingestion/{legislation,contracts}.py    # ingestion CLIs
-ui/streamlit_app.py          # full GUI (upload + chat + usage)
-data/legislation/  data/contracts/        # SAMPLE corpus + sample contract
+  llm/client.py                              # OpenRouter via the openai SDK (+ usage.include)
+  core/{config,logging,usage,trace}.py       # config, usage/cost, run tracing
+  agent/{loop,tools,prompts,context,schema,verify}.py   # tool-calling agent + gate
+  retrieval/{store,embeddings}.py            # pgvector + cached local embeddings
+  ingestion/{legislation,contracts}.py       # ingestion CLIs
+  api/main.py                                # optional FastAPI service
+ui/streamlit_app.py                          # full GUI (upload + chat + usage + verification)
+eval/{dataset/, run_eval.py}                 # golden cases + metrics harness
+data/legislation/  data/contracts/           # SAMPLE corpus (+ SOURCING.md) + sample contract
 Dockerfile · docker-compose.yml · .env.example
 ```
 
-Roadmap: **M4** hardening — eval harness (groundedness / citation accuracy /
-refusal metrics), tracing, prefix caching, optional FastAPI, and the real sourced
-Egyptian legislation corpus (replacing the SAMPLE data).
+Status: **M0–M4 delivered.** The main remaining work to be production-real is
+**sourcing the authoritative Egyptian legislation corpus** to replace the SAMPLE
+seeds — see [data/legislation/SOURCING.md](data/legislation/SOURCING.md) — plus
+scale/quality options (reranking, larger embedding model, managed vector store).

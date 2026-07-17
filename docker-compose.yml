@@ -12,7 +12,6 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
-    # Exposed for local inspection with psql if desired.
     ports:
       - "5432:5432"
 
@@ -34,6 +33,25 @@ services:
       # Live-mount the source for iterative dev.
       - ./:/app
       # Persist HuggingFace model weights so they download only once.
+      - models:/models
+
+  # Optional REST API (M4). Start with:  docker compose --profile api up
+  api:
+    build: .
+    profiles: ["api"]
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env.example
+    environment:
+      PYTHONPATH: /app
+      DATABASE_URL: postgresql://eldostor:eldostor@db:5432/eldostor
+      HF_HOME: /models
+    command: uvicorn app.api.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./:/app
       - models:/models
 
 volumes:

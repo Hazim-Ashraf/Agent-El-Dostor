@@ -11,6 +11,7 @@ venv/
 # Local model cache / data artifacts (mounted as Docker volumes in normal use)
 models/
 uploads/
+logs/
 *.log
 
 # OS

@@ -6,6 +6,8 @@ Default model is `intfloat/multilingual-e5-base`; e5 models expect the
 """
 from __future__ import annotations
 
+from functools import lru_cache
+
 from app.core.config import settings
 from app.core.logging import get_logger
 
@@ -40,7 +42,10 @@ def embed_passages(texts: list[str]) -> list[list[float]]:
     return [v.tolist() for v in vecs]
 
 
+@lru_cache(maxsize=4096)
 def embed_query(text: str) -> list[float]:
+    # Cached: repeated identical queries (common in agent loops / re-asks) skip the
+    # CPU embedding pass. Callers must treat the returned list as read-only.
     model = _get_model()
     payload = f"query: {text}" if _is_e5() else text
     vec = model.encode([payload], normalize_embeddings=True)[0]

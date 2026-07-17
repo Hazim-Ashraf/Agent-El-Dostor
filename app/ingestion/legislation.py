@@ -10,7 +10,9 @@ Run inside the container:
 from __future__ import annotations
 
 import argparse
+import glob
 import json
+import os
 from datetime import date
 
 from app.core.logging import get_logger
@@ -64,11 +66,27 @@ def ingest(path: str) -> int:
         conn.close()
 
 
+def ingest_dir(directory: str) -> int:
+    paths = sorted(glob.glob(os.path.join(directory, "*.json")))
+    if not paths:
+        log.warning("No .json files found in %s", directory)
+        return 0
+    total = 0
+    for path in paths:
+        total += ingest(path)
+    log.info("Ingested %s chunks from %s file(s) in %s", total, len(paths), directory)
+    return total
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Ingest an Egyptian legislation JSON file.")
-    parser.add_argument("--seed", default="data/legislation/seed_labor_law.json")
+    parser = argparse.ArgumentParser(description="Ingest Egyptian legislation JSON.")
+    parser.add_argument("--seed", help="Path to a single legislation JSON file.")
+    parser.add_argument("--dir", help="Directory to ingest (all *.json).")
     args = parser.parse_args()
-    ingest(args.seed)
+    if args.dir:
+        ingest_dir(args.dir)
+    else:
+        ingest(args.seed or "data/legislation/seed_labor_law.json")
 
 
 if __name__ == "__main__":

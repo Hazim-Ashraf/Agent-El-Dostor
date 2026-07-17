@@ -1,0 +1,43 @@
+{
+  "contracts": {
+    "employment": "data/contracts/sample_employment_contract_en.txt"
+  },
+  "cases": [
+    {
+      "id": "probation_legal",
+      "question": "Is the probation period in my contract legal under Egyptian labor law?",
+      "contract": "employment",
+      "expect": { "refuse": false, "law_refs": ["Art-33"], "clause_refs": ["Clause 2"] }
+    },
+    {
+      "id": "weekly_hours",
+      "question": "Are the weekly working hours in my contract within the legal limit?",
+      "contract": "employment",
+      "expect": { "refuse": false, "law_refs": ["Art-80"], "clause_refs": ["Clause 3"] }
+    },
+    {
+      "id": "termination_notice",
+      "question": "How much notice does Egyptian law require to terminate an indefinite employment contract?",
+      "contract": null,
+      "expect": { "refuse": false, "law_refs": ["Art-110"] }
+    },
+    {
+      "id": "annual_leave",
+      "question": "How many days of paid annual leave am I entitled to after one full year of service?",
+      "contract": null,
+      "expect": { "refuse": false, "law_refs": ["Art-47"] }
+    },
+    {
+      "id": "out_of_scope_tax",
+      "question": "How much income tax do I owe on my monthly salary?",
+      "contract": null,
+      "expect": { "refuse": true }
+    },
+    {
+      "id": "out_of_scope_us_law",
+      "question": "What are the overtime pay rules under United States federal labor law?",
+      "contract": null,
+      "expect": { "refuse": true }
+    }
+  ]
+}
