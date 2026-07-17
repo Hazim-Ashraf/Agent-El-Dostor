@@ -145,6 +145,19 @@ def get_article(
         return cur.fetchall()
 
 
+def find_articles_by_ref(conn: psycopg.Connection, article_ref: str) -> list[dict[str, Any]]:
+    """Resolve an article by its ref across any law (lenient citation lookup)."""
+    if not table_exists(conn, "legislation_chunks"):
+        return []
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, law, article_ref, lang, title, text FROM legislation_chunks "
+            "WHERE article_ref = %s AND repealed = FALSE ORDER BY lang",
+            (article_ref,),
+        )
+        return cur.fetchall()
+
+
 def count(conn: psycopg.Connection) -> int:
     if not table_exists(conn, "legislation_chunks"):
         return 0

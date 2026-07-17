@@ -34,9 +34,23 @@ def get_status() -> dict[str, Any] | None:
         return None
 
 
+_VERIFICATION_BADGE = {
+    "passed": "✅ Verified — every finding is grounded in a cited source.",
+    "partial": "⚠️ Partially verified — some ungrounded findings were dropped.",
+    "ungated": "ℹ️ Answered without the structured verification gate.",
+    "unverified": "⚠️ Could not produce a verified answer within the step limit.",
+}
+
+
 def render_trace(meta: dict[str, Any]) -> None:
     trace = meta.get("trace", [])
     usage = meta.get("usage", {}) or {}
+    verification = meta.get("verification") or {}
+    status = verification.get("status")
+    if status:
+        badge = _VERIFICATION_BADGE.get(status, f"Verification: {status}")
+        st.caption(f"{badge}  ·  {verification.get('findings', 0)} grounded finding(s)")
+
     header = (
         f"Trace — {len(trace)} tool call(s), {meta.get('steps', 0)} step(s) · "
         f"{usage.get('total_tokens', 0):,} tokens · ${usage.get('cost_usd', 0.0):.4f}"
@@ -175,6 +189,7 @@ if prompt:
                 "trace": result.get("trace", []),
                 "steps": result.get("steps", 0),
                 "usage": result.get("usage", {}),
+                "verification": result.get("verification", {}),
             },
         }
     )

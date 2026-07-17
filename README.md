@@ -16,11 +16,16 @@ open-source.
 
 ---
 
-## What's here today (Milestones M0–M2)
+## What's here today (Milestones M0–M3)
 
 - A goal-driven, tool-calling **agent loop** over OpenRouter, working over both the
   **uploaded contract** and the **legislation** KB (`search_contract`,
   `get_contract_clause`, `search_legislation`, `get_legal_article`).
+- A **hard verification gate**: the agent must finish via `submit_answer` with
+  structured findings, and every finding's citation is checked against the real
+  retrieved text (verbatim-quote match) — ungrounded claims are rejected and sent
+  back for revision. Retrieved content is wrapped as untrusted data (prompt-injection
+  defense).
 - **Contract ingestion**: PDF / DOCX / TXT / image, with **OCR** (Tesseract ara+eng)
   for scanned files, clause segmentation, and bilingual embeddings.
 - **Postgres + pgvector** store for legislation and contract clauses.
@@ -147,5 +152,6 @@ data/legislation/  data/contracts/        # SAMPLE corpus + sample contract
 Dockerfile · docker-compose.yml · .env.example
 ```
 
-Roadmap: **M3** full agent + `submit_answer` + hard verification gate; **M4**
-hardening (eval harness, prefix caching, optional FastAPI) + real sourced corpus.
+Roadmap: **M4** hardening — eval harness (groundedness / citation accuracy /
+refusal metrics), tracing, prefix caching, optional FastAPI, and the real sourced
+Egyptian legislation corpus (replacing the SAMPLE data).
