@@ -21,7 +21,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    env_file: .env
+    env_file: .env.example
     environment:
       # Make the `app` package importable when Streamlit runs a script by path.
       PYTHONPATH: /app
