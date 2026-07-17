@@ -10,8 +10,8 @@ class Settings(BaseSettings):
     # --- OpenRouter (the only paid dependency) ---
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    reasoning_model: str = "openai/gpt-4o-mini"
-    utility_model: str = "openai/gpt-4o-mini"
+    reasoning_model: str = "deepseek/deepseek-chat-v3-0324:free"
+    utility_model: str = "deepseek/deepseek-chat-v3-0324:free"
 
     # --- Storage ---
     database_url: str = "postgresql://eldostor:eldostor@db:5432/eldostor"

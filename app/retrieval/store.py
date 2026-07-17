@@ -84,6 +84,13 @@ def upsert_chunks(conn: psycopg.Connection, rows: list[dict[str, Any]]) -> int:
     return len(rows)
 
 
+def table_exists(conn: psycopg.Connection, name: str) -> bool:
+    with conn.cursor() as cur:
+        cur.execute("SELECT to_regclass(%s) AS t", (name,))
+        row = cur.fetchone()
+        return bool(row and row["t"] is not None)
+
+
 def search(
     conn: psycopg.Connection,
     query_embedding: list[float],
@@ -92,6 +99,8 @@ def search(
     limit: int = 6,
 ) -> list[dict[str, Any]]:
     """Cosine-distance nearest neighbours over in-force articles."""
+    if not table_exists(conn, "legislation_chunks"):
+        return []
     sql = [
         "SELECT id, law, article_ref, lang, title, text, effective_date,",
         "       (embedding <=> %s) AS distance",
@@ -118,6 +127,8 @@ def search(
 def get_article(
     conn: psycopg.Connection, law: str, article_ref: str
 ) -> list[dict[str, Any]]:
+    if not table_exists(conn, "legislation_chunks"):
+        return []
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -132,6 +143,8 @@ def get_article(
 
 
 def count(conn: psycopg.Connection) -> int:
+    if not table_exists(conn, "legislation_chunks"):
+        return 0
     with conn.cursor() as cur:
         cur.execute("SELECT COUNT(*) AS n FROM legislation_chunks")
         row = cur.fetchone()

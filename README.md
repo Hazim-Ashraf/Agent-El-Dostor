@@ -81,7 +81,7 @@ doesn't have that in its knowledge base rather than guess.
 | Variable | Purpose | Default |
 | --- | --- | --- |
 | `OPENROUTER_API_KEY` | **Required.** The only paid dependency. | — |
-| `REASONING_MODEL` | Any tool-calling model on OpenRouter. | `openai/gpt-4o-mini` |
+| `REASONING_MODEL` | Any **tool-calling** model on OpenRouter (free default for testing). | `deepseek/deepseek-chat-v3-0324:free` |
 | `EMBEDDING_MODEL` | Free local model. `BAAI/bge-m3` for higher quality (bigger). | `intfloat/multilingual-e5-base` |
 | `ENABLE_RERANK` | Reranking (better precision, more RAM). Off by default on 16 GB. | `false` |
 | `MAX_AGENT_ITERATIONS` | Tool-call loop bound. | `6` |
