@@ -4,6 +4,8 @@ from __future__ import annotations
 import time
 from typing import Any
 
+import numpy as np
+
 import psycopg
 from pgvector.psycopg import register_vector
 from psycopg.rows import dict_row
@@ -107,7 +109,8 @@ def search(
         "FROM legislation_chunks",
         "WHERE repealed = FALSE",
     ]
-    params: list[Any] = [query_embedding]
+    vec = np.array(query_embedding, dtype=np.float32)
+    params: list[Any] = [vec]
     if law:
         sql.append("AND law = %s")
         params.append(law)
@@ -115,7 +118,7 @@ def search(
         sql.append("AND (effective_date IS NULL OR effective_date <= %s)")
         params.append(as_of_date)
     sql.append("ORDER BY embedding <=> %s")
-    params.append(query_embedding)
+    params.append(vec)
     sql.append("LIMIT %s")
     params.append(limit)
 
