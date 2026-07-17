@@ -14,7 +14,8 @@ ENV PYTHONUNBUFFERED=1 \
 #  - Tesseract (Arabic+English OCR) + poppler (PDF->image for OCR)  [ingestion]
 #  - Pango/Cairo/gdk-pixbuf: WeasyPrint's rendering backend (RTL Arabic shaping via
 #    HarfBuzz) for contract-generation PDF export
-#  - fonts-amiri (Arabic naskh, for legal Arabic) + fonts-dejavu-core (Latin)
+#  - fonts-hosny-amiri (the Amiri Arabic naskh font — family name "Amiri" — for legal
+#    Arabic; package is named `fonts-hosny-amiri` on Debian trixie) + fonts-dejavu-core (Latin)
 # The apt package lists + .deb archives live in cache mounts (not baked into the image),
 # so a later change re-fetches only new packages. `rm docker-clean` keeps apt from
 # auto-deleting the .debs we want to cache.
@@ -30,7 +31,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         libpangoft2-1.0-0 \
         libgdk-pixbuf-2.0-0 \
         libffi8 \
-        fonts-amiri \
+        fonts-hosny-amiri \
         fonts-dejavu-core
 
 WORKDIR /app
