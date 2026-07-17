@@ -1,11 +1,19 @@
 # ⚖️ Agent El-Dostor
 
-An AI **agent** (not a workflow) that helps people in Egypt understand the legal
-implications of their contracts. You upload a contract and ask questions; the agent
-autonomously reads the **contract** and searches a knowledge base of **Egyptian
-legislation** with tool calls, then answers with **citations** — comparing what the
-contract says against what the law requires. It never invents law: if the knowledge
-base doesn't cover something, it says so.
+An AI **agent** (not a workflow) that **reviews and generates** contracts under
+**Egyptian law**, in **Arabic and English**.
+
+- **Review** — upload a contract and ask questions; the agent autonomously reads the
+  **contract** and searches a knowledge base of **Egyptian legislation** with tool
+  calls, then answers with **citations** — comparing what the contract says against
+  what the law requires.
+- **Generate** — describe the terms you want; the agent researches the relevant
+  **Egyptian Civil Code** articles, drafts the contract clause-by-clause (bilingual
+  or single-language), **cites the article each legal clause is grounded in**, and
+  exports a correctly-formatted **PDF** with proper Arabic (RTL) typesetting.
+
+It never invents law: if the knowledge base doesn't cover something, it says so, and
+every cited article is checked against the real corpus.
 
 > **Not legal advice.** General legal information only; it does not replace a licensed
 > Egyptian lawyer.
@@ -16,7 +24,7 @@ open-source.
 
 ---
 
-## What's here today (Milestones M0–M4)
+## What's here today (Milestones M0–M5)
 
 - A goal-driven, tool-calling **agent loop** over OpenRouter, working over both the
   **uploaded contract** and the **legislation** KB (`search_contract`,
@@ -35,12 +43,21 @@ open-source.
   **sample employment contract** for testing.
 - **M4 hardening**: an **eval harness** (groundedness / citation-recall / refusal
   metrics), **run tracing** (JSONL with tokens / cost / latency), a query-embedding
-  **cache**, an optional **FastAPI** service, and an expanded multi-domain **SAMPLE**
-  corpus (labor, civil/rental, companies, commercial) with a sourcing guide.
+  **cache**, an optional **FastAPI** service, and a **real-legislation PDF ingester**
+  that parses the **Egyptian Civil Code (Law 131/1948)** into ~1,149 articles (Arabic,
+  by the `مادة N` marker, with OCR fallback).
+- **M5 contract generation → PDF**: a second agent loop that drafts a contract
+  grounded in the ingested legislation (same discipline — it researches with
+  `search_legislation`, attaches a `legal_basis` to each legal clause, and a
+  verification step **drops any cited article that doesn't resolve**). It exports a
+  formatted **PDF** via **WeasyPrint** (Amiri Arabic font) with correct **RTL Arabic**
+  + LTR English. Bilingual PDFs support three **user-selectable** layouts:
+  **side-by-side** (EN | AR), **sequential** (EN then AR), or **two separate PDFs**.
 
-> ℹ️ The seed legislation and sample contract in `data/` are clearly labelled
-> **SAMPLE** placeholder text — not authoritative law. Sourcing the real corpus is a
-> later milestone.
+> ℹ️ The **Egyptian Civil Code (Law 131/1948)** is the **real, authoritative** law
+> source (ingested from its PDF — step 3a). The one remaining `seed_labor_law.json` and
+> the sample contract are still **SAMPLE** placeholders (the Labour Law is a separate
+> statute not yet supplied) — see [data/legislation/SOURCING.md](data/legislation/SOURCING.md).
 
 ---
 
@@ -64,15 +81,22 @@ cp .env.example .env       # then set OPENROUTER_API_KEY=... in .env
 # 2. Build & start the database + app
 docker compose up --build
 
-# 3. Load ALL the sample legislation seeds (creates the KB tables)
+# 3a. Load the real Egyptian Civil Code (Law 131/1948).
+#     Put the PDF at data/legislation/law-131-1948.pdf first, then:
 docker compose run --rm app python -m app.ingestion.legislation \
-  --dir data/legislation
+  --pdf data/legislation/law-131-1948.pdf --ocr
+
+# 3b. (optional) Also load the SAMPLE labour-law placeholder for employment demos:
+docker compose run --rm app python -m app.ingestion.legislation \
+  --seed data/legislation/seed_labor_law.json
 
 # 4. Open the GUI
 #    http://localhost:8501
 ```
 
-In the GUI:
+The GUI has two modes (sidebar radio):
+
+**📄 Review a contract**
 1. Under **Contract**, upload a file (or the bundled
    `data/contracts/sample_employment_contract_en.txt`) and click **Ingest contract**.
    You can also ingest it from the CLI:
@@ -83,7 +107,16 @@ In the GUI:
 2. In **Ask**, try: *"Is the probation period in my contract legal?"* — the agent
    reads Clause 2 (six months) and compares it to the law (three months), with
    citations.
-3. Watch the **Usage** panel (sidebar) tally tokens and USD as you go.
+
+**🖊️ Generate a contract**
+1. Pick a **contract type** and **language** (Arabic / English / Bilingual), then
+   **describe the terms** (parties, amounts, duration, special conditions).
+2. Click **Generate contract** — the agent researches the Civil Code and drafts the
+   clauses; the preview shows each clause and the article it's grounded in.
+3. Under **Export PDF**, pick the bilingual **layout** (side-by-side / sequential /
+   two files), click **Build PDF**, and **download** it.
+
+Watch the **Usage** panel (sidebar) tally tokens and USD across both modes.
 
 ---
 
@@ -95,7 +128,9 @@ In the GUI:
 | `REASONING_MODEL` | Any **tool-calling** model on OpenRouter. Free options (rate-limited): [list](https://openrouter.ai/models?supported_parameters=tools&max_price=0). | `deepseek/deepseek-chat-v3-0324` |
 | `EMBEDDING_MODEL` | Free local model. `BAAI/bge-m3` for higher quality (bigger). | `intfloat/multilingual-e5-base` |
 | `ENABLE_RERANK` | Reranking (better precision, more RAM). | `false` |
-| `MAX_AGENT_ITERATIONS` | Tool-call loop bound. | `6` |
+| `MAX_AGENT_ITERATIONS` | Review tool-call loop bound. | `6` |
+| `MAX_GENERATION_ITERATIONS` | Generation tool-call loop bound. | `8` |
+| `GENERATION_MAX_TOKENS` | Output budget for a generated contract. | `8000` |
 | `DATABASE_URL` | Set automatically by Docker Compose. | `…@db:5432/eldostor` |
 
 Change a value, then restart: `docker compose down && docker compose up`.
@@ -128,12 +163,14 @@ Edit `eval/dataset/cases.json` to add cases. (Runs against OpenRouter, so it cos
 
 ## REST API (M4, optional)
 
-A FastAPI service exposes the same agent:
+A FastAPI service exposes the same agents:
 
 ```bash
 docker compose --profile api up          # http://localhost:8000/docs
-# POST /contracts (multipart file + contract_type)  ·  POST /ask {question, contract_id?}
-#   GET /contracts  ·  GET /health
+# Review:   POST /contracts (multipart file + contract_type)  ·  POST /ask {question, contract_id?}
+#           GET /contracts  ·  GET /health
+# Generate: POST /generate      {contract_type, language, brief}          -> structured contract + verification
+#           POST /generate/pdf  {contract_type, language, brief, layout}  -> application/pdf (zip if layout="separate")
 ```
 
 ## Observability (M4)
@@ -146,6 +183,20 @@ docker compose exec app tail -f logs/agent_runs.jsonl
 ```
 
 ---
+
+## Rebuilds & caching (when do I need `--build`?)
+
+- **Code changes → no rebuild.** The source is bind-mounted (`./:/app` in
+  `docker-compose.yml`), so `docker compose up` already runs your latest code (Streamlit
+  even hot-reloads). You only need `--build` when **`pyproject.toml` or the `Dockerfile`**
+  changes.
+- **Rebuilds are incremental.** The image uses **BuildKit cache mounts** for the apt and
+  pip download caches, so a rebuild re-downloads **only new packages** — the heavy stack
+  (torch, sentence-transformers, …) is reused from cache, not fetched again. (Requires
+  BuildKit, which is the default in Docker 23+ / Compose v2.)
+- **Model weights download once.** The embedding model is cached in the `models` named
+  volume, so it isn't re-downloaded across restarts.
+- Force a clean rebuild (rarely needed): `docker compose build --no-cache`.
 
 ## Common tasks
 
@@ -174,6 +225,11 @@ docker compose down -v && docker compose up
   the `models` volume) and runs on CPU.
 - **Changing `EMBEDDING_MODEL` dimension** — different vector sizes need a fresh table:
   `docker compose down -v` then re-ingest.
+- **"PDF rendering failed" / WeasyPrint errors** — the PDF exporter needs the Pango/Cairo
+  libraries and the Amiri font baked into the image. Rebuild after pulling M5:
+  `docker compose up --build`.
+- **Generated clauses show no legal basis** — the legislation KB is empty; run the
+  Civil Code ingestion (step 3a) so clauses can be grounded and cited.
 
 ---
 
@@ -183,17 +239,19 @@ docker compose down -v && docker compose up
 app/
   llm/client.py                              # OpenRouter via the openai SDK (+ usage.include)
   core/{config,logging,usage,trace}.py       # config, usage/cost, run tracing
-  agent/{loop,tools,prompts,context,schema,verify}.py   # tool-calling agent + gate
+  agent/{loop,tools,prompts,context,schema,verify}.py     # REVIEW agent + verification gate
+  generation/{loop,tools,prompts,schema,verify,pdf}.py    # GENERATE agent + PDF export
   retrieval/{store,embeddings}.py            # pgvector + cached local embeddings
   ingestion/{legislation,contracts}.py       # ingestion CLIs
-  api/main.py                                # optional FastAPI service
-ui/streamlit_app.py                          # full GUI (upload + chat + usage + verification)
+  api/main.py                                # optional FastAPI service (review + generate)
+ui/streamlit_app.py                          # full GUI (review chat + generate/PDF + usage)
 eval/{dataset/, run_eval.py}                 # golden cases + metrics harness
-data/legislation/  data/contracts/           # SAMPLE corpus (+ SOURCING.md) + sample contract
+data/legislation/  data/contracts/           # real Civil Code PDF + SAMPLE labour seed + SOURCING.md
 Dockerfile · docker-compose.yml · .env.example
 ```
 
-Status: **M0–M4 delivered.** The main remaining work to be production-real is
-**sourcing the authoritative Egyptian legislation corpus** to replace the SAMPLE
-seeds — see [data/legislation/SOURCING.md](data/legislation/SOURCING.md) — plus
-scale/quality options (reranking, larger embedding model, managed vector store).
+Status: **M0–M5 delivered** — contract **review + generation (with PDF export)**,
+running on the real Egyptian Civil Code (Law 131/1948). Remaining work to broaden
+coverage: source the **Labour Law** and other statutes (same PDF ingester — see
+[data/legislation/SOURCING.md](data/legislation/SOURCING.md)), plus scale/quality
+options (reranking, larger embedding model, managed vector store).

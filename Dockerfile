@@ -1,25 +1,47 @@
+# syntax=docker/dockerfile:1
 FROM python:3.12-slim
 
+# Built with BuildKit (default in Docker 23+ / Compose v2). The `--mount=type=cache`
+# blocks below persist the apt + pip DOWNLOAD caches BETWEEN builds, so changing a
+# dependency re-downloads ONLY the new package instead of the whole stack. Do NOT set
+# PIP_NO_CACHE_DIR here — it would defeat the pip cache mount.
 ENV PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
     HF_HOME=/models \
     PYTHONPATH=/app
 
-# System deps: Tesseract (Arabic+English OCR) + poppler (PDF->image for OCR).
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# System deps:
+#  - Tesseract (Arabic+English OCR) + poppler (PDF->image for OCR)  [ingestion]
+#  - Pango/Cairo/gdk-pixbuf: WeasyPrint's rendering backend (RTL Arabic shaping via
+#    HarfBuzz) for contract-generation PDF export
+#  - fonts-amiri (Arabic naskh, for legal Arabic) + fonts-dejavu-core (Latin)
+# The apt package lists + .deb archives live in cache mounts (not baked into the image),
+# so a later change re-fetches only new packages. `rm docker-clean` keeps apt from
+# auto-deleting the .debs we want to cache.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    rm -f /etc/apt/apt.conf.d/docker-clean && \
+    apt-get update && apt-get install -y --no-install-recommends \
         tesseract-ocr \
         tesseract-ocr-ara \
         tesseract-ocr-eng \
         poppler-utils \
-    && rm -rf /var/lib/apt/lists/*
+        libpango-1.0-0 \
+        libpangoft2-1.0-0 \
+        libgdk-pixbuf-2.0-0 \
+        libffi8 \
+        fonts-amiri \
+        fonts-dejavu-core
 
 WORKDIR /app
 
-# Install dependencies in their own cached layer (parsed from pyproject.toml)
-# so code edits don't trigger a full torch reinstall.
+# Python deps in their own layer, keyed ONLY on pyproject.toml (so code edits don't
+# reinstall). The pip cache mount means a dependency change downloads ONLY new wheels;
+# everything already fetched (torch, sentence-transformers, …) is reused from cache.
 COPY pyproject.toml ./
-RUN pip install --upgrade pip && \
+RUN --mount=type=cache,target=/root/.cache/pip \
     python -c "import tomllib; open('/tmp/requirements.txt','w').write(chr(10).join(tomllib.load(open('pyproject.toml','rb'))['project']['dependencies']))" && \
+    pip install --upgrade pip && \
     pip install -r /tmp/requirements.txt
 
 COPY . .

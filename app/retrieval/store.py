@@ -146,14 +146,21 @@ def get_article(
 
 
 def find_articles_by_ref(conn: psycopg.Connection, article_ref: str) -> list[dict[str, Any]]:
-    """Resolve an article by its ref across any law (lenient citation lookup)."""
+    """Resolve an article by its ref across any law (lenient citation lookup).
+
+    Matches an exact article_ref OR the same numeric part, so 'مادة 558', '558',
+    and 'Art-558' all resolve to the stored article.
+    """
     if not table_exists(conn, "legislation_chunks"):
         return []
+    digits = "".join(c for c in (article_ref or "") if c.isdigit()) or "\x00"
     with conn.cursor() as cur:
         cur.execute(
             "SELECT id, law, article_ref, lang, title, text FROM legislation_chunks "
-            "WHERE article_ref = %s AND repealed = FALSE ORDER BY lang",
-            (article_ref,),
+            "WHERE repealed = FALSE AND "
+            "(article_ref = %s OR regexp_replace(article_ref, '[^0-9]', '', 'g') = %s) "
+            "ORDER BY lang",
+            (article_ref, digits),
         )
         return cur.fetchall()
 

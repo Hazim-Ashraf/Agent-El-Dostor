@@ -1,9 +1,34 @@
 # Sourcing the Egyptian legislation corpus
 
-The `seed_*.json` files in this folder are **illustrative SAMPLE data** — paraphrased
-placeholder text used to exercise ingestion, retrieval, and the verification gate.
-**They are not authoritative law and must not be relied on.** This guide describes how
-to replace them with sourced, verified legislation.
+## Current corpus status
+
+- ✅ **Egyptian Civil Code — Law No. 131 of 1948** (real, authoritative). Ingested from
+  the official PDF (`law-131-1948.pdf`) via the PDF parser (see below). This covers the
+  Civil Code's ~1,149 articles: obligations, contracts (sale, **lease/rent**, company,
+  agency, deposit, insurance, suretyship), property, and real securities.
+- ⚠️ **Labour** — `seed_labor_law.json` is still **illustrative SAMPLE data** (its `source`
+  field says so). The Egyptian Labour Law is a *separate* statute; replace this placeholder
+  once you have the authoritative Labour Law text.
+
+The remaining `seed_*.json` file is a **SAMPLE** placeholder used to exercise the pipeline.
+**Sample data is not authoritative law and must not be relied on.** This guide describes
+how to source and ingest real legislation.
+
+## Ingesting a real legislation PDF
+
+Place the PDF in this folder, then:
+
+```bash
+docker compose run --rm app python -m app.ingestion.legislation \
+  --pdf data/legislation/law-131-1948.pdf --ocr \
+  --law "Egyptian Civil Code (Law 131 of 1948)" --effective-date 1949-10-15
+```
+
+The parser splits the text into articles on the Arabic header marker `مادة N`, embeds
+each article, and upserts it into the same `legislation_chunks` table. `--ocr` uses
+Tesseract (`ara`) on rasterised pages — recommended for Arabic PDFs whose text layer is
+broken; omit it to try the faster `pdfplumber` text layer (the parser auto-falls back to
+OCR if it finds too few article markers).
 
 > ⚠️ Do not let an AI model *write* the legal text. Every article must be transcribed
 > from an authoritative published source and then verified by a qualified reviewer.

@@ -24,5 +24,11 @@ class Settings(BaseSettings):
     # --- Agent loop ---
     max_agent_iterations: int = 6
 
+    # --- Contract generation (M5) ---
+    # A whole bilingual contract is emitted as one submit_contract tool call, so the
+    # completion needs plenty of room.
+    generation_max_tokens: int = 8000
+    max_generation_iterations: int = 8
+
 
 settings = Settings()

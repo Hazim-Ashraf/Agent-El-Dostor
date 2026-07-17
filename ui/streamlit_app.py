@@ -1,7 +1,12 @@
-"""Agent El-Dostor — full testing GUI (M2).
+"""Agent El-Dostor — testing GUI (M2 + M5).
 
-Upload a contract, chat with the grounded agent, inspect the tool-call trace and
-citations, and track token + USD usage for the session.
+Two modes:
+  • Review   — upload a contract, chat with the grounded agent, inspect the
+               tool-call trace, citations, and verification gate.
+  • Generate — draft a bilingual (AR/EN) contract grounded in Egyptian law and
+               download it as a correctly-formatted PDF.
+
+A token + USD usage panel tracks the whole session.
 """
 from __future__ import annotations
 
@@ -12,15 +17,18 @@ import streamlit as st
 from app.agent.loop import run_agent
 from app.core.config import settings
 from app.core.usage import Usage
+from app.generation.loop import generate_contract
+from app.generation.pdf import render_contract_pdfs
 from app.ingestion.contracts import ingest_contract_bytes
 from app.retrieval import store
 
 st.set_page_config(page_title="Agent El-Dostor", page_icon="⚖️", layout="wide")
 
 # --- session state ---------------------------------------------------------- #
-st.session_state.setdefault("messages", [])          # [{role, content, meta?}]
+st.session_state.setdefault("messages", [])           # [{role, content, meta?}]
 st.session_state.setdefault("active_contract", None)  # {contract_id, filename, ...}
 st.session_state.setdefault("session_usage", Usage())
+st.session_state.setdefault("generated", None)        # {result, pdfs: [(name, bytes)]}
 
 
 def get_status() -> dict[str, Any] | None:
@@ -39,6 +47,20 @@ _VERIFICATION_BADGE = {
     "partial": "⚠️ Partially verified — some ungrounded findings were dropped.",
     "ungated": "ℹ️ Answered without the structured verification gate.",
     "unverified": "⚠️ Could not produce a verified answer within the step limit.",
+}
+
+_GEN_BADGE = {
+    "grounded": "✅ Grounded — every legal reference resolves to a real article.",
+    "partial": "⚠️ Partially grounded — some references didn't resolve and were dropped.",
+    "unverified": "⚠️ No cited article resolved to the knowledge base.",
+    "none": "ℹ️ No legal references attached (is the legislation KB loaded?).",
+}
+
+_LANG_OPTS = {"bilingual": "Bilingual (Arabic + English)", "ar": "Arabic only", "en": "English only"}
+_LAYOUT_OPTS = {
+    "side_by_side": "Side-by-side (English | Arabic)",
+    "sequential": "Sequential (English, then Arabic)",
+    "separate": "Two separate PDFs",
 }
 
 
@@ -70,6 +92,9 @@ with st.sidebar:
     st.header("⚖️ Agent El-Dostor")
     st.caption("Egyptian contract intelligence — grounded, tool-calling.")
 
+    mode = st.radio("Mode", ["📄 Review a contract", "🖊️ Generate a contract"])
+
+    st.divider()
     st.subheader("Status")
     st.write(f"Model: `{settings.reasoning_model}`")
     st.write(f"Embeddings: `{settings.embedding_model}`")
@@ -87,9 +112,7 @@ with st.sidebar:
     col1, col2 = st.columns(2)
     col1.metric("Tokens", f"{u.total_tokens:,}")
     col2.metric("Cost (USD)", f"${u.cost_usd:.4f}" if u.cost_known else f"~${u.cost_usd:.4f}")
-    st.caption(
-        f"{u.calls} model call(s) · prompt {u.prompt_tokens:,} / completion {u.completion_tokens:,}"
-    )
+    st.caption(f"{u.calls} model call(s) · prompt {u.prompt_tokens:,} / completion {u.completion_tokens:,}")
     if not u.cost_known:
         st.caption("⚠️ This model/provider didn't report a cost.")
     if st.button("Reset usage"):
@@ -100,97 +123,213 @@ with st.sidebar:
 st.title("⚖️ Agent El-Dostor")
 st.warning(
     "General legal information only — not a substitute for a licensed Egyptian lawyer. "
-    "The knowledge base currently contains **SAMPLE** data."
+    "Generated contracts are **drafts** to be reviewed by a lawyer before use."
 )
 
-# --- contract section ------------------------------------------------------- #
-st.subheader("📄 Contract")
-active = st.session_state.active_contract
-if active:
-    st.success(
-        f"Active contract: **{active['filename']}** "
-        f"({active.get('contract_type')}, {active.get('n_clauses')} clauses)"
-    )
-    if st.button("Clear active contract"):
-        st.session_state.active_contract = None
-        st.rerun()
 
-with st.expander("Upload or select a contract", expanded=active is None):
-    uploaded = st.file_uploader(
-        "Upload (PDF, DOCX, TXT, or image — scanned files are OCR'd)",
-        type=["pdf", "docx", "txt", "md", "png", "jpg", "jpeg", "tiff", "bmp"],
-    )
-    contract_type = st.selectbox(
-        "Contract type",
-        ["employment", "rental", "shareholder", "service", "commercial", "unknown"],
-    )
-    if st.button("Ingest contract", disabled=uploaded is None):
-        with st.spinner("Parsing, segmenting, embedding… (first run downloads the model)"):
-            try:
-                meta = ingest_contract_bytes(uploaded.name, uploaded.getvalue(), contract_type)
-                st.session_state.active_contract = meta
-                st.success(f"Ingested {meta['n_clauses']} clauses from {meta['filename']}.")
-                st.rerun()
-            except Exception as exc:  # noqa: BLE001
-                st.error(f"Ingestion failed: {exc}")
-
-    if status and status["contracts"]:
-        st.markdown("**Or reuse a previously uploaded contract:**")
-        options = {
-            f"{c['filename']} ({c['contract_type']}, {c['n_clauses']} cl.)": c
-            for c in status["contracts"]
-        }
-        pick = st.selectbox("Existing contracts", ["—", *options.keys()])
-        if pick != "—" and st.button("Use selected"):
-            c = options[pick]
-            st.session_state.active_contract = {
-                "contract_id": c["id"],
-                "filename": c["filename"],
-                "contract_type": c["contract_type"],
-                "lang": c.get("lang"),
-                "n_clauses": c["n_clauses"],
-            }
+# =========================================================================== #
+# MODE: REVIEW
+# =========================================================================== #
+def review_mode() -> None:
+    st.subheader("📄 Contract")
+    active = st.session_state.active_contract
+    if active:
+        st.success(
+            f"Active contract: **{active['filename']}** "
+            f"({active.get('contract_type')}, {active.get('n_clauses')} clauses)"
+        )
+        if st.button("Clear active contract"):
+            st.session_state.active_contract = None
             st.rerun()
 
-# --- chat ------------------------------------------------------------------- #
-st.subheader("💬 Ask")
+    with st.expander("Upload or select a contract", expanded=active is None):
+        uploaded = st.file_uploader(
+            "Upload (PDF, DOCX, TXT, or image — scanned files are OCR'd)",
+            type=["pdf", "docx", "txt", "md", "png", "jpg", "jpeg", "tiff", "bmp"],
+        )
+        contract_type = st.selectbox(
+            "Contract type",
+            ["employment", "rental", "shareholder", "service", "commercial", "unknown"],
+        )
+        if st.button("Ingest contract", disabled=uploaded is None):
+            with st.spinner("Parsing, segmenting, embedding… (first run downloads the model)"):
+                try:
+                    meta = ingest_contract_bytes(uploaded.name, uploaded.getvalue(), contract_type)
+                    st.session_state.active_contract = meta
+                    st.success(f"Ingested {meta['n_clauses']} clauses from {meta['filename']}.")
+                    st.rerun()
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"Ingestion failed: {exc}")
 
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-        if message["role"] == "assistant" and message.get("meta"):
-            render_trace(message["meta"])
+        if status and status["contracts"]:
+            st.markdown("**Or reuse a previously uploaded contract:**")
+            options = {
+                f"{c['filename']} ({c['contract_type']}, {c['n_clauses']} cl.)": c
+                for c in status["contracts"]
+            }
+            pick = st.selectbox("Existing contracts", ["—", *options.keys()])
+            if pick != "—" and st.button("Use selected"):
+                c = options[pick]
+                st.session_state.active_contract = {
+                    "contract_id": c["id"],
+                    "filename": c["filename"],
+                    "contract_type": c["contract_type"],
+                    "lang": c.get("lang"),
+                    "n_clauses": c["n_clauses"],
+                }
+                st.rerun()
 
-prompt = st.chat_input("Ask about your contract or Egyptian law…")
-if prompt:
-    st.session_state.messages.append({"role": "user", "content": prompt})
+    st.subheader("💬 Ask")
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+            if message["role"] == "assistant" and message.get("meta"):
+                render_trace(message["meta"])
 
-    contract_id = active["contract_id"] if active else None
-    history = [
-        {"role": m["role"], "content": m["content"]}
-        for m in st.session_state.messages[:-1]
-    ][-8:]
+    prompt = st.chat_input("Ask about your contract or Egyptian law…")
+    if prompt:
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        contract_id = active["contract_id"] if active else None
+        history = [
+            {"role": m["role"], "content": m["content"]}
+            for m in st.session_state.messages[:-1]
+        ][-8:]
+        try:
+            with st.spinner("Retrieving + reasoning…"):
+                result = run_agent(prompt, contract_id=contract_id, history=history)
+        except Exception as exc:  # noqa: BLE001
+            st.session_state.messages.append({"role": "assistant", "content": f"⚠️ Request failed: {exc}"})
+            st.rerun()
 
-    try:
-        with st.spinner("Retrieving + reasoning…"):
-            result = run_agent(prompt, contract_id=contract_id, history=history)
-    except Exception as exc:  # noqa: BLE001
+        st.session_state.session_usage.add(Usage(**result["usage"]))
         st.session_state.messages.append(
-            {"role": "assistant", "content": f"⚠️ Request failed: {exc}"}
+            {
+                "role": "assistant",
+                "content": result["answer"] or "_(no answer produced)_",
+                "meta": {
+                    "trace": result.get("trace", []),
+                    "steps": result.get("steps", 0),
+                    "usage": result.get("usage", {}),
+                    "verification": result.get("verification", {}),
+                },
+            }
         )
         st.rerun()
 
-    st.session_state.session_usage.add(Usage(**result["usage"]))
-    st.session_state.messages.append(
-        {
-            "role": "assistant",
-            "content": result["answer"] or "_(no answer produced)_",
-            "meta": {
-                "trace": result.get("trace", []),
-                "steps": result.get("steps", 0),
-                "usage": result.get("usage", {}),
-                "verification": result.get("verification", {}),
-            },
-        }
+
+# =========================================================================== #
+# MODE: GENERATE
+# =========================================================================== #
+def _render_preview(contract: dict[str, Any]) -> None:
+    if contract.get("title_en"):
+        st.markdown(f"### {contract['title_en']}")
+    if contract.get("title_ar"):
+        st.markdown(f"#### {contract['title_ar']}")
+    meta = " · ".join(x for x in [contract.get("place"), contract.get("date")] if x)
+    if meta:
+        st.caption(meta)
+
+    if contract.get("parties"):
+        st.markdown("**Parties**")
+        for p in contract["parties"]:
+            bits = [p.get("role_en") or p.get("role_ar"), p.get("name_en") or p.get("name_ar")]
+            st.markdown("- " + " — ".join(b for b in bits if b))
+
+    with st.expander("Drafted clauses", expanded=True):
+        for c in contract.get("clauses", []):
+            head_en = f"**Article ({c['number']}) {c.get('heading_en', '')}**".strip()
+            st.markdown(head_en)
+            if c.get("body_en"):
+                st.write(c["body_en"])
+            if c.get("heading_ar") or c.get("body_ar"):
+                st.markdown(f"**المادة ({c['number']}) {c.get('heading_ar', '')}**")
+                if c.get("body_ar"):
+                    st.write(c["body_ar"])
+            if c.get("legal_basis"):
+                refs = "؛ ".join(
+                    f"{b.get('ref', '')}{(' — ' + b['law']) if b.get('law') else ''}"
+                    for b in c["legal_basis"]
+                )
+                st.caption(f"⚖️ Legal basis: {refs}")
+            st.divider()
+
+
+def generate_mode() -> None:
+    st.subheader("🖊️ Generate a contract")
+    st.caption(
+        "The agent researches the Egyptian Civil Code, drafts the contract clause-by-clause, "
+        "and cites the articles each legal clause is grounded in."
     )
-    st.rerun()
+    if status and status["kb"] == 0:
+        st.warning("The legislation KB is empty — clauses can't be grounded. Ingest it first (README step 3).")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        ctype = st.selectbox("Contract type", ["employment", "rental", "shareholder", "service", "commercial"])
+    with col2:
+        language = st.selectbox("Language", list(_LANG_OPTS), format_func=_LANG_OPTS.get)
+
+    brief = st.text_area(
+        "Describe the terms you want (parties, amounts, duration, special conditions…)",
+        height=140,
+        placeholder="e.g. One-year residential lease in Cairo. Landlord: [name]. Tenant: [name]. "
+        "Monthly rent EGP 8,000, two months deposit, tenant pays utilities.",
+    )
+
+    if st.button("Generate contract", type="primary"):
+        try:
+            with st.spinner("Researching the law + drafting… (this is several model calls)"):
+                result = generate_contract(ctype, language=language, brief=brief)
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"Generation failed: {exc}")
+            return
+        st.session_state.session_usage.add(Usage(**result["usage"]))
+        st.session_state.generated = {"result": result, "pdfs": []}
+        st.rerun()
+
+    gen = st.session_state.generated
+    if not gen:
+        return
+
+    result = gen["result"]
+    if result.get("status") != "generated" or not result.get("contract"):
+        st.error(f"The agent did not produce a contract. {result.get('error', '')}")
+        return
+
+    contract = result["contract"]
+    ver = result.get("verification", {})
+    st.divider()
+    st.caption(
+        f"{_GEN_BADGE.get(ver.get('status'), ver.get('status', ''))}  ·  "
+        f"{ver.get('n_verified', 0)}/{ver.get('n_legal_basis', 0)} legal references verified"
+        f" across {ver.get('n_clauses', 0)} clause(s)."
+    )
+    if ver.get("dropped"):
+        with st.expander(f"{len(ver['dropped'])} citation(s) dropped (didn't resolve)"):
+            st.json(ver["dropped"])
+
+    _render_preview(contract)
+
+    # ---- PDF export ----
+    st.subheader("📑 Export PDF")
+    language = contract.get("language", "bilingual")
+    layout = "side_by_side"
+    if language == "bilingual":
+        layout = st.radio("Bilingual layout", list(_LAYOUT_OPTS), format_func=_LAYOUT_OPTS.get, horizontal=True)
+    if st.button("Build PDF"):
+        try:
+            with st.spinner("Rendering PDF…"):
+                st.session_state.generated["pdfs"] = render_contract_pdfs(contract, language, layout)
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"PDF rendering failed: {exc}")
+
+    for name, data in st.session_state.generated.get("pdfs", []):
+        st.download_button(
+            f"⬇️ Download {name}", data=data, file_name=name, mime="application/pdf", key=f"dl_{name}"
+        )
+
+
+if mode.startswith("📄"):
+    review_mode()
+else:
+    generate_mode()

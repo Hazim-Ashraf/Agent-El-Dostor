@@ -39,8 +39,13 @@ def chat(
     tools: list[dict[str, Any]] | None = None,
     model: str | None = None,
     temperature: float = 0.0,
+    max_tokens: int | None = None,
 ):
-    """One chat-completions call. Returns the raw OpenAI response object."""
+    """One chat-completions call. Returns the raw OpenAI response object.
+
+    `max_tokens` is worth raising for contract generation, where the final
+    `submit_contract` tool call carries a whole bilingual document as arguments.
+    """
     kwargs: dict[str, Any] = {
         "model": model or settings.reasoning_model,
         "messages": messages,
@@ -48,6 +53,8 @@ def chat(
         # Ask OpenRouter to include the USD cost in the usage object.
         "extra_body": {"usage": {"include": True}},
     }
+    if max_tokens is not None:
+        kwargs["max_tokens"] = max_tokens
     if tools:
         kwargs["tools"] = tools
         kwargs["tool_choice"] = "auto"

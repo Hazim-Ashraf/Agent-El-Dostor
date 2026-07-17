@@ -22,6 +22,8 @@ dependencies = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
     "python-multipart>=0.0.9",
+    # Contract generation -> PDF (M5). WeasyPrint renders RTL Arabic + bilingual layouts.
+    "weasyprint>=60",
 ]
 
 [build-system]
