@@ -5,11 +5,12 @@ ENV PYTHONUNBUFFERED=1 \
     HF_HOME=/models \
     PYTHONPATH=/app
 
-# System deps: Tesseract for Arabic+English OCR (used from M1 onward).
+# System deps: Tesseract (Arabic+English OCR) + poppler (PDF->image for OCR).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         tesseract-ocr \
         tesseract-ocr-ara \
         tesseract-ocr-eng \
+        poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

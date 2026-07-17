@@ -45,6 +45,8 @@ def chat(
         "model": model or settings.reasoning_model,
         "messages": messages,
         "temperature": temperature,
+        # Ask OpenRouter to include the USD cost in the usage object.
+        "extra_body": {"usage": {"include": True}},
     }
     if tools:
         kwargs["tools"] = tools

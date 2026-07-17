@@ -152,3 +152,148 @@ def count(conn: psycopg.Connection) -> int:
         cur.execute("SELECT COUNT(*) AS n FROM legislation_chunks")
         row = cur.fetchone()
         return int(row["n"]) if row else 0
+
+
+# --------------------------------------------------------------------------- #
+# Contracts (M1)
+# --------------------------------------------------------------------------- #
+
+
+def init_contract_schema(conn: psycopg.Connection, dim: int) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS contracts (
+                id            TEXT PRIMARY KEY,
+                filename      TEXT,
+                contract_type TEXT,
+                lang          TEXT,
+                n_clauses     INTEGER NOT NULL DEFAULT 0,
+                uploaded_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+            """
+        )
+        cur.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS contract_clauses (
+                id           TEXT PRIMARY KEY,
+                contract_id  TEXT NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+                clause_index INTEGER NOT NULL,
+                clause_ref   TEXT,
+                lang         TEXT,
+                text         TEXT NOT NULL,
+                embedding    vector({dim})
+            )
+            """
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_clause_contract ON contract_clauses (contract_id)"
+        )
+    conn.commit()
+
+
+def upsert_contract(conn: psycopg.Connection, contract: dict[str, Any]) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO contracts (id, filename, contract_type, lang, n_clauses)
+            VALUES (%(id)s, %(filename)s, %(contract_type)s, %(lang)s, %(n_clauses)s)
+            ON CONFLICT (id) DO UPDATE SET
+                filename = EXCLUDED.filename,
+                contract_type = EXCLUDED.contract_type,
+                lang = EXCLUDED.lang,
+                n_clauses = EXCLUDED.n_clauses
+            """,
+            contract,
+        )
+    conn.commit()
+
+
+def replace_contract_clauses(
+    conn: psycopg.Connection, contract_id: str, rows: list[dict[str, Any]]
+) -> int:
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM contract_clauses WHERE contract_id = %s", (contract_id,))
+        for r in rows:
+            cur.execute(
+                """
+                INSERT INTO contract_clauses
+                    (id, contract_id, clause_index, clause_ref, lang, text, embedding)
+                VALUES
+                    (%(id)s, %(contract_id)s, %(clause_index)s, %(clause_ref)s,
+                     %(lang)s, %(text)s, %(embedding)s)
+                """,
+                r,
+            )
+    conn.commit()
+    return len(rows)
+
+
+def search_contract(
+    conn: psycopg.Connection,
+    contract_id: str,
+    query_embedding: list[float],
+    limit: int = 6,
+) -> list[dict[str, Any]]:
+    if not table_exists(conn, "contract_clauses"):
+        return []
+    vec = np.array(query_embedding, dtype=np.float32)
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, clause_index, clause_ref, lang, text,
+                   (embedding <=> %s) AS distance
+            FROM contract_clauses
+            WHERE contract_id = %s
+            ORDER BY embedding <=> %s
+            LIMIT %s
+            """,
+            (vec, contract_id, vec, limit),
+        )
+        return cur.fetchall()
+
+
+def get_clause(
+    conn: psycopg.Connection, contract_id: str, clause_ref: str
+) -> list[dict[str, Any]]:
+    if not table_exists(conn, "contract_clauses"):
+        return []
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, clause_index, clause_ref, lang, text
+            FROM contract_clauses
+            WHERE contract_id = %s
+              AND (clause_ref ILIKE %s OR clause_index::text = %s)
+            ORDER BY clause_index
+            """,
+            (contract_id, f"%{clause_ref}%", clause_ref),
+        )
+        return cur.fetchall()
+
+
+def get_contract(conn: psycopg.Connection, contract_id: str) -> dict[str, Any] | None:
+    if not table_exists(conn, "contracts"):
+        return None
+    with conn.cursor() as cur:
+        cur.execute("SELECT * FROM contracts WHERE id = %s", (contract_id,))
+        return cur.fetchone()
+
+
+def list_contracts(conn: psycopg.Connection) -> list[dict[str, Any]]:
+    if not table_exists(conn, "contracts"):
+        return []
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, filename, contract_type, lang, n_clauses, uploaded_at "
+            "FROM contracts ORDER BY uploaded_at DESC"
+        )
+        return cur.fetchall()
+
+
+def delete_contract(conn: psycopg.Connection, contract_id: str) -> None:
+    if not table_exists(conn, "contracts"):
+        return
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM contracts WHERE id = %s", (contract_id,))
+    conn.commit()
