@@ -30,7 +30,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         libpangoft2-1.0-0 \
         libgdk-pixbuf-2.0-0 \
         libffi8 \
-        fonts-amiri \
+        fonts-hosny-amiri \
         fonts-dejavu-core
 
 WORKDIR /app
