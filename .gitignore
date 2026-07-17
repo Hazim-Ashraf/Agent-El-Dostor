@@ -1,0 +1,17 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Local model cache / data artifacts (mounted as Docker volumes in normal use)
+models/
+uploads/
+*.log
+
+# OS
+.DS_Store

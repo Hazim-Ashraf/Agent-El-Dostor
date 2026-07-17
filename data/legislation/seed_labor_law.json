@@ -1,0 +1,87 @@
+{
+  "law": "Egyptian Labor Law (SAMPLE)",
+  "source": "ILLUSTRATIVE SAMPLE DATA — paraphrased placeholder text for testing only. NOT authoritative law. Replace with sourced, verified legislation in the corpus milestone (M4).",
+  "disclaimer": "The article numbers and wording below are simplified placeholders used to exercise the ingestion + retrieval pipeline. Do not rely on them as legal text.",
+  "articles": [
+    {
+      "article_ref": "Art-01",
+      "lang": "en",
+      "title": "Definitions",
+      "effective_date": "2025-01-01",
+      "repealed": false,
+      "text": "For the purposes of this Law, a 'worker' is any natural person who performs work for an employer under the employer's management or supervision in return for a wage."
+    },
+    {
+      "article_ref": "Art-01",
+      "lang": "ar",
+      "title": "تعريفات",
+      "effective_date": "2025-01-01",
+      "repealed": false,
+      "text": "في تطبيق أحكام هذا القانون يُقصد بالعامل كل شخص طبيعي يعمل لدى صاحب عمل وتحت إدارته أو إشرافه مقابل أجر."
+    },
+    {
+      "article_ref": "Art-33",
+      "lang": "en",
+      "title": "Probation period",
+      "effective_date": "2025-01-01",
+      "repealed": false,
+      "text": "A worker may be appointed under probation provided the probation period is stated in the contract and does not exceed three months. A worker may not be placed under probation more than once with the same employer."
+    },
+    {
+      "article_ref": "Art-33",
+      "lang": "ar",
+      "title": "فترة الاختبار",
+      "effective_date": "2025-01-01",
+      "repealed": false,
+      "text": "يجوز تعيين العامل تحت الاختبار بشرط أن تُحدد مدة الاختبار في العقد وألا تتجاوز ثلاثة أشهر، ولا يجوز وضع العامل تحت الاختبار أكثر من مرة لدى صاحب عمل واحد."
+    },
+    {
+      "article_ref": "Art-80",
+      "lang": "en",
+      "title": "Weekly working hours and rest",
+      "effective_date": "2025-01-01",
+      "repealed": false,
+      "text": "The maximum ordinary working time is eight hours per day or forty-eight hours per week, excluding meal and rest periods. The worker is entitled to at least one paid weekly rest day."
+    },
+    {
+      "article_ref": "Art-80",
+      "lang": "ar",
+      "title": "ساعات العمل والراحة الأسبوعية",
+      "effective_date": "2025-01-01",
+      "repealed": false,
+      "text": "الحد الأقصى لساعات العمل الفعلية ثماني ساعات يوميًا أو ثمان وأربعون ساعة أسبوعيًا، بخلاف فترات الطعام والراحة، وللعامل الحق في يوم راحة أسبوعية واحد مدفوع الأجر على الأقل."
+    },
+    {
+      "article_ref": "Art-47",
+      "lang": "en",
+      "title": "Annual leave",
+      "effective_date": "2025-01-01",
+      "repealed": false,
+      "text": "A worker who has completed one full year of service is entitled to annual leave of twenty-one days with full pay; this increases to thirty days after ten years of service or once the worker reaches the age of fifty."
+    },
+    {
+      "article_ref": "Art-47",
+      "lang": "ar",
+      "title": "الإجازة السنوية",
+      "effective_date": "2025-01-01",
+      "repealed": false,
+      "text": "يستحق العامل الذي أمضى سنة كاملة في الخدمة إجازة سنوية مدتها واحد وعشرون يومًا بأجر كامل، وتصبح ثلاثين يومًا بعد عشر سنوات من الخدمة أو عند بلوغ العامل سن الخمسين."
+    },
+    {
+      "article_ref": "Art-110",
+      "lang": "en",
+      "title": "Notice of termination",
+      "effective_date": "2025-01-01",
+      "repealed": false,
+      "text": "Where a contract is of indefinite duration, either party may terminate it after giving written notice: two months' notice if the worker's service is less than ten years, and three months' notice if it is ten years or more."
+    },
+    {
+      "article_ref": "Art-110",
+      "lang": "ar",
+      "title": "الإخطار بإنهاء العقد",
+      "effective_date": "2025-01-01",
+      "repealed": false,
+      "text": "إذا كان العقد غير محدد المدة جاز لأي من الطرفين إنهاؤه بعد إخطار الطرف الآخر كتابةً، ويكون الإخطار شهرين إذا كانت مدة خدمة العامل أقل من عشر سنوات، وثلاثة أشهر إذا بلغت عشر سنوات فأكثر."
+    }
+  ]
+}

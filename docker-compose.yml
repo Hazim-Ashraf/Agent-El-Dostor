@@ -1,0 +1,39 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: eldostor
+      POSTGRES_PASSWORD: eldostor
+      POSTGRES_DB: eldostor
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eldostor -d eldostor"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    # Exposed for local inspection with psql if desired.
+    ports:
+      - "5432:5432"
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      # Force the in-cluster DB host regardless of what .env says.
+      DATABASE_URL: postgresql://eldostor:eldostor@db:5432/eldostor
+      HF_HOME: /models
+    ports:
+      - "8501:8501"
+    volumes:
+      # Live-mount the source for iterative dev.
+      - ./:/app
+      # Persist HuggingFace model weights so they download only once.
+      - models:/models
+
+volumes:
+  pgdata:
+  models:
