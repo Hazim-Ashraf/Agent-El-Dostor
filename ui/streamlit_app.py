@@ -17,8 +17,9 @@ import streamlit as st
 from app.agent.loop import run_agent
 from app.core.config import settings
 from app.core.usage import Usage
-from app.generation.loop import generate_contract
+from app.generation.loop import generate_contract, refine_contract
 from app.generation.pdf import render_contract_pdfs
+from app.generation.schema import GeneratedContract
 from app.ingestion.contracts import ingest_contract_bytes
 from app.retrieval import store
 
@@ -29,6 +30,9 @@ st.session_state.setdefault("messages", [])           # [{role, content, meta?}]
 st.session_state.setdefault("active_contract", None)  # {contract_id, filename, ...}
 st.session_state.setdefault("session_usage", Usage())
 st.session_state.setdefault("generated", None)        # {result, pdfs: [(name, bytes)]}
+
+st.session_state.setdefault("gen_messages", [])       # Chat history for generation mode
+st.session_state.setdefault("gen_contract_obj", None) # The current GeneratedContract object
 
 
 def get_status() -> dict[str, Any] | None:
@@ -93,6 +97,33 @@ with st.sidebar:
     st.caption("Egyptian contract intelligence — grounded, tool-calling.")
 
     mode = st.radio("Mode", ["📄 Review a contract", "🖊️ Generate a contract"])
+    if mode.startswith("🖊️"):
+        st.divider()
+        st.subheader("Contract Settings")
+        st.session_state.setdefault("gen_ctype", "employment")
+        st.session_state.setdefault("gen_lang", "bilingual")
+        
+        ctype = st.selectbox(
+            "Contract type", 
+            ["employment", "rental", "shareholder", "service", "commercial"],
+            index=["employment", "rental", "shareholder", "service", "commercial"].index(st.session_state.gen_ctype)
+        )
+        language = st.selectbox(
+            "Language", 
+            list(_LANG_OPTS), 
+            format_func=_LANG_OPTS.get,
+            index=list(_LANG_OPTS).index(st.session_state.gen_lang)
+        )
+        
+        # If settings change, we should probably warn or reset, but let's just update state.
+        st.session_state.gen_ctype = ctype
+        st.session_state.gen_lang = language
+
+        if st.button("New Contract (Reset)", type="primary"):
+            st.session_state.gen_messages = []
+            st.session_state.gen_contract_obj = None
+            st.session_state.generated = None
+            st.rerun()
 
     st.divider()
     st.subheader("Status")
@@ -257,34 +288,78 @@ def _render_preview(contract: dict[str, Any]) -> None:
 def generate_mode() -> None:
     st.subheader("🖊️ Generate a contract")
     st.caption(
-        "The agent researches the Egyptian Civil Code, drafts the contract clause-by-clause, "
-        "and cites the articles each legal clause is grounded in."
+        "Describe the contract you want. The agent will draft it clause-by-clause, "
+        "and cite the Egyptian Civil Code. You can ask for changes iteratively."
     )
     if status and status["kb"] == 0:
         st.warning("The legislation KB is empty — clauses can't be grounded. Ingest it first (README step 3).")
 
-    col1, col2 = st.columns(2)
-    with col1:
-        ctype = st.selectbox("Contract type", ["employment", "rental", "shareholder", "service", "commercial"])
-    with col2:
-        language = st.selectbox("Language", list(_LANG_OPTS), format_func=_LANG_OPTS.get)
+    # Display chat history
+    for message in st.session_state.gen_messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+            if message["role"] == "assistant" and message.get("meta"):
+                render_trace(message["meta"])
 
-    brief = st.text_area(
-        "Describe the terms you want (parties, amounts, duration, special conditions…)",
-        height=140,
-        placeholder="e.g. One-year residential lease in Cairo. Landlord: [name]. Tenant: [name]. "
-        "Monthly rent EGP 8,000, two months deposit, tenant pays utilities.",
-    )
-
-    if st.button("Generate contract", type="primary"):
+    prompt = st.chat_input("Describe the contract or ask for changes (e.g. 'Make the notice period 3 months')...")
+    
+    if prompt:
+        st.session_state.gen_messages.append({"role": "user", "content": prompt})
+        
+        ctype = st.session_state.gen_ctype
+        language = st.session_state.gen_lang
+        
+        # History format expected by the LLM
+        history = [
+            {"role": m["role"], "content": m["content"]}
+            for m in st.session_state.gen_messages[:-1]
+        ][-6:]
+        
         try:
-            with st.spinner("Researching the law + drafting… (this is several model calls)"):
-                result = generate_contract(ctype, language=language, brief=brief)
+            current_contract = st.session_state.gen_contract_obj
+            if current_contract is None:
+                # Initial generation
+                with st.spinner("Researching the law + drafting initial contract…"):
+                    result = generate_contract(ctype, language=language, brief=prompt)
+            else:
+                # Refinement
+                with st.spinner("Researching and applying your changes…"):
+                    result = refine_contract(
+                        current_contract=current_contract,
+                        user_request=prompt,
+                        contract_type=ctype,
+                        language=language,
+                        history=history
+                    )
         except Exception as exc:  # noqa: BLE001
             st.error(f"Generation failed: {exc}")
+            st.session_state.gen_messages.append({"role": "assistant", "content": f"⚠️ Request failed: {exc}"})
+            st.rerun()
             return
+            
         st.session_state.session_usage.add(Usage(**result["usage"]))
-        st.session_state.generated = {"result": result, "pdfs": []}
+        
+        if result.get("status") in ("generated", "failed") and result.get("contract"):
+            # Update the stored contract object
+            st.session_state.gen_contract_obj = GeneratedContract.model_validate(result["contract"])
+            st.session_state.generated = {"result": result, "pdfs": []}
+            
+            reply = "I have updated the contract draft." if current_contract else "Here is the initial contract draft."
+        else:
+            reply = f"Failed to produce the contract. {result.get('error', '')}"
+
+        st.session_state.gen_messages.append(
+            {
+                "role": "assistant",
+                "content": reply,
+                "meta": {
+                    "trace": result.get("trace", []),
+                    "steps": result.get("steps", 0),
+                    "usage": result.get("usage", {}),
+                    "verification": result.get("verification", {}),
+                },
+            }
+        )
         st.rerun()
 
     gen = st.session_state.generated
@@ -292,11 +367,10 @@ def generate_mode() -> None:
         return
 
     result = gen["result"]
-    if result.get("status") != "generated" or not result.get("contract"):
-        st.error(f"The agent did not produce a contract. {result.get('error', '')}")
+    contract = result.get("contract")
+    if not contract:
         return
 
-    contract = result["contract"]
     ver = result.get("verification", {})
     st.divider()
     st.caption(

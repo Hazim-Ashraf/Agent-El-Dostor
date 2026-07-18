@@ -83,3 +83,41 @@ def draft_summary(contract: GeneratedContract) -> str:
         f"{contract.contract_type} contract · {contract.language} · "
         f"{len(contract.clauses)} clause(s) · {n_basis} legal reference(s)"
     )
+
+
+BASE_REFINEMENT_PROMPT = """\
+You are Agent El-Dostor, REFINING an existing contract draft. The user wants
+specific changes — apply them while preserving everything else.
+
+RULES
+- The CURRENT CONTRACT is provided below as structured JSON. Modify ONLY the
+  parts the user requests. Keep all other clauses, parties, and metadata intact.
+- If the change requires new legal grounding (a new clause, a changed legal
+  limit), call `search_legislation` / `get_legal_article` to find the relevant
+  article and attach it as `legal_basis`.
+- FINISH by calling `submit_contract` with the FULL updated contract (not just
+  the changed parts). The contract must be complete and ready to render.
+- All the legal grounding, language, drafting, and safety rules from the
+  original generation apply here as well.
+- If the user asks for something that conflicts with Egyptian law, explain why
+  it's problematic rather than silently complying.
+"""
+
+
+def build_refinement_prompt(
+    contract: GeneratedContract,
+    contract_type: str,
+    language: str,
+    today: str,
+) -> str:
+    """System prompt for refining an existing contract draft."""
+    import json
+
+    lang_label = _LANG_LABEL.get(language, language)
+    contract_json = json.dumps(contract.model_dump(), ensure_ascii=False, indent=2)
+    return (
+        BASE_REFINEMENT_PROMPT
+        + f"\nCONTRACT METADATA\n- Type: {contract_type}\n- Language: {lang_label}\n"
+        f"- Today's date: {today}\n"
+        f"\nCURRENT CONTRACT (JSON):\n```json\n{contract_json}\n```\n"
+    )

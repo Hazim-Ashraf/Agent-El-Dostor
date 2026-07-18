@@ -24,6 +24,7 @@ dependencies = [
     "python-multipart>=0.0.9",
     # Contract generation -> PDF (M5). WeasyPrint renders RTL Arabic + bilingual layouts.
     "weasyprint>=60",
+    "torchvision",
 ]
 
 [build-system]
