@@ -139,6 +139,35 @@ def build_tools(has_contract: bool) -> list[dict[str, Any]]:
     return LEGISLATION_TOOLS + (CONTRACT_TOOLS if has_contract else []) + [SUBMIT_ANSWER_TOOL]
 
 
+def summarize_result(result: str) -> str:
+    """One-line human summary of a tool result — for the live thinking display and logs.
+
+    The full JSON result stays out of the GUI; it is logged at DEBUG and traced to
+    logs/agent_runs.jsonl instead.
+    """
+    try:
+        data = json.loads(result)
+    except Exception:  # noqa: BLE001 - display helper must never raise
+        return "done"
+    if isinstance(data, dict):
+        if data.get("error"):
+            return f"error — {data['error']}"
+        rows = data.get("results")
+        if isinstance(rows, list):
+            if not rows:
+                return "no matches"
+            refs = []
+            for r in rows[:3]:
+                ref = r.get("article_ref") or r.get("clause_ref") or r.get("clause_index")
+                if ref is not None:
+                    refs.append(str(ref))
+            tail = ""
+            if refs:
+                tail = f": {', '.join(refs)}" + ("…" if len(rows) > 3 else "")
+            return f"{len(rows)} passage(s){tail}"
+    return "done"
+
+
 def _wrap(results: list[dict[str, Any]]) -> str:
     """Wrap retrieval results so the model treats them as untrusted document DATA."""
     return json.dumps(

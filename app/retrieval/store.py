@@ -292,6 +292,23 @@ def get_clause(
         return cur.fetchall()
 
 
+def list_clauses(conn: psycopg.Connection, contract_id: str) -> list[dict[str, Any]]:
+    """All clauses of a contract in document order (for the annotated contract view)."""
+    if not table_exists(conn, "contract_clauses"):
+        return []
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, clause_index, clause_ref, lang, text
+            FROM contract_clauses
+            WHERE contract_id = %s
+            ORDER BY clause_index
+            """,
+            (contract_id,),
+        )
+        return cur.fetchall()
+
+
 def get_contract(conn: psycopg.Connection, contract_id: str) -> dict[str, Any] | None:
     if not table_exists(conn, "contracts"):
         return None

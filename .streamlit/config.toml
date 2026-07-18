@@ -1,0 +1,19 @@
+[server]
+# `transformers` (pulled in by sentence-transformers) lazily exposes hundreds of
+# image-processing modules that do `import torchvision`. torchvision isn't installed
+# (it's an unused dependency), so Streamlit's source-file watcher floods the logs with
+# ModuleNotFoundError tracebacks while scanning modules for hot-reload. Turning the
+# watcher off stops the noise. Trade-off: no auto-reload on save — restart the app
+# container (`docker compose restart app`) to pick up code changes.
+fileWatcherType = "none"
+# Skip the first-run email prompt / telemetry nag in a container.
+headless = true
+
+[theme]
+# "El-Dostor" palette (light): warm ivory/parchment ground, soft-ink text, deep
+# gold accent — calm, institutional, legal.
+base = "light"
+primaryColor = "#8C6D14"
+backgroundColor = "#FBF8F1"
+secondaryBackgroundColor = "#F1ECE0"
+textColor = "#2B2A26"
